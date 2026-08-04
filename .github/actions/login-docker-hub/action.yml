@@ -1,0 +1,34 @@
+name: 'Login to Docker Hub'
+description: 'Read Docker Hub credentials from Vault and log in to the registry'
+
+outputs:
+  registry:
+    value: ${{ steps.generate.outputs.registry }}
+    description: 'Docker Hub registry hostname'
+  repository:
+    value: ${{ steps.generate.outputs.repository }}
+    description: 'Docker Hub repository or organization'
+
+runs:
+  using: "composite"
+  steps:
+    - name: Read Secrets for Docker Hub
+      uses: rancher-eio/read-vault-secrets@d266f55186f80a893839f6e15662e67388e443e6 # v3
+      with:
+        secrets: |
+          secret/data/github/repo/${{ github.repository }}/dockerhub/rancher/credentials username | DOCKER_IO_USERNAME ;
+          secret/data/github/repo/${{ github.repository }}/dockerhub/rancher/credentials password | DOCKER_IO_PASSWORD
+
+    - name: Login to Docker Hub
+      uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4
+      with:
+        registry: docker.io
+        username: ${{ env.DOCKER_IO_USERNAME }}
+        password: ${{ env.DOCKER_IO_PASSWORD }}
+
+    - name: Expose registry destination
+      id: generate
+      shell: bash
+      run: |
+        echo "registry=docker.io" >> "$GITHUB_OUTPUT"
+        echo "repository=rancher" >> "$GITHUB_OUTPUT"

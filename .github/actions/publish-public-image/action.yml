@@ -1,0 +1,64 @@
+name: 'Publish Public Image'
+description: 'Build and publish one image without provenance or SBOM attestations'
+
+inputs:
+  context:
+    description: 'Docker build context'
+    required: false
+    default: '.'
+  dockerfile:
+    description: 'Path to the Dockerfile'
+    required: true
+  image:
+    description: 'Image name without registry, repository, or tag'
+    required: true
+  tag:
+    description: 'Image tag'
+    required: true
+  platforms:
+    description: 'Comma-separated target platforms'
+    required: false
+    default: 'linux/amd64,linux/arm64'
+  build-args:
+    description: 'Newline-delimited Docker build arguments'
+    required: false
+    default: ''
+  cache-scope:
+    description: 'GitHub Actions cache scope; defaults to the image name'
+    required: false
+    default: ''
+  registry:
+    description: 'Public registry hostname'
+    required: false
+    default: 'docker.io'
+  repository:
+    description: 'Public registry repository or organization'
+    required: true
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Resolve cache scope
+      id: config
+      shell: bash
+      env:
+        CACHE_SCOPE: ${{ inputs.cache-scope }}
+        IMAGE: ${{ inputs.image }}
+      run: |
+        cache_scope="${CACHE_SCOPE:-$IMAGE}"
+        cache_scope="${cache_scope//[^a-zA-Z0-9_.-]/-}"
+        echo "cache-scope=$cache_scope" >> "$GITHUB_OUTPUT"
+
+    - name: Build and push public image
+      uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5
+      with:
+        context: ${{ inputs.context }}
+        file: ${{ inputs.dockerfile }}
+        platforms: ${{ inputs.platforms }}
+        build-args: ${{ inputs.build-args }}
+        push: true
+        tags: ${{ inputs.registry }}/${{ inputs.repository }}/${{ inputs.image }}:${{ inputs.tag }}
+        provenance: false
+        sbom: false
+        cache-from: type=gha,scope=${{ steps.config.outputs.cache-scope }}
+        cache-to: type=gha,mode=max,scope=${{ steps.config.outputs.cache-scope }}

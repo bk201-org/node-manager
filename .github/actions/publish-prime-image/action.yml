@@ -1,0 +1,141 @@
+name: 'Publish Prime Image'
+description: 'Build, publish, and sign one prime or staging image with provenance and SBOM attestations'
+
+inputs:
+  context:
+    description: 'Docker build context'
+    required: false
+    default: '.'
+  dockerfile:
+    description: 'Path to the Dockerfile'
+    required: true
+  image:
+    description: 'Image name without registry, repository, or tag'
+    required: true
+  tag:
+    description: 'Image tag'
+    required: true
+  platforms:
+    description: 'Comma-separated target platforms'
+    required: false
+    default: 'linux/amd64,linux/arm64'
+  build-args:
+    description: 'Newline-delimited Docker build arguments'
+    required: false
+    default: ''
+  cache-scope:
+    description: 'GitHub Actions cache scope; defaults to the image name'
+    required: false
+    default: ''
+  registry:
+    description: 'Prime or staging registry hostname'
+    required: true
+  repository:
+    description: 'Prime or staging registry repository or organization'
+    required: true
+  identity-registry:
+    description: 'Registry used in the signed image identity; defaults to the destination registry'
+    required: false
+    default: ''
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Validate registry and resolve cache scope
+      id: config
+      shell: bash
+      env:
+        CACHE_SCOPE: ${{ inputs.cache-scope }}
+        IMAGE: ${{ inputs.image }}
+        REGISTRY: ${{ inputs.registry }}
+      run: |
+        if [[ "$REGISTRY" == docker.io ]]; then
+          echo "The prime or staging registry cannot be docker.io" >&2
+          exit 1
+        fi
+
+        cache_scope="${CACHE_SCOPE:-$IMAGE}"
+        cache_scope="${cache_scope//[^a-zA-Z0-9_.-]/-}"
+        echo "cache-scope=$cache_scope" >> "$GITHUB_OUTPUT"
+
+    - name: Install Cosign
+      uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+    - name: Install slsactl
+      uses: rancherlabs/slsactl/actions/install-slsactl@ddd4735b474ca57fac67c5a0a0d36d0a4624ac87 # v0.1.35
+      with:
+        version: v0.1.35
+
+    - name: Build and push prime image
+      id: push
+      uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5
+      with:
+        context: ${{ inputs.context }}
+        file: ${{ inputs.dockerfile }}
+        platforms: ${{ inputs.platforms }}
+        build-args: ${{ inputs.build-args }}
+        push: true
+        tags: ${{ inputs.registry }}/${{ inputs.repository }}/${{ inputs.image }}:${{ inputs.tag }}
+        provenance: true
+        sbom: true
+        cache-from: type=gha,scope=${{ steps.config.outputs.cache-scope }}
+        cache-to: type=gha,mode=max,scope=${{ steps.config.outputs.cache-scope }}
+
+    - name: Sign prime image
+      shell: bash
+      env:
+        DIGEST: ${{ steps.push.outputs.digest }}
+        IDENTITY_REGISTRY: ${{ inputs.identity-registry }}
+        IMAGE: ${{ inputs.image }}
+        REGISTRY: ${{ inputs.registry }}
+        REPOSITORY: ${{ inputs.repository }}
+      run: |
+        if [[ -z "$DIGEST" ]]; then
+          echo "The image digest is empty; refusing to sign" >&2
+          exit 1
+        fi
+
+        identity_registry="${IDENTITY_REGISTRY:-$REGISTRY}"
+        image_ref="${REGISTRY}/${REPOSITORY}/${IMAGE}@${DIGEST}"
+        identity="${identity_registry}/${REPOSITORY}/${IMAGE}"
+
+        cosign sign \
+          --oidc-provider=github-actions \
+          --yes \
+          --sign-container-identity="$identity" \
+          "$image_ref"
+
+    - name: Attest provenance
+      shell: bash
+      env:
+        DIGEST: ${{ steps.push.outputs.digest }}
+        IMAGE: ${{ inputs.image }}
+        LANDLOCK_MODE: DISABLED
+        REGISTRY: ${{ inputs.registry }}
+        REPOSITORY: ${{ inputs.repository }}
+        TAG: ${{ inputs.tag }}
+      run: |
+        image_ref="${REGISTRY}/${REPOSITORY}/${IMAGE}:${TAG}@${DIGEST}"
+        provenance_file="$(mktemp)"
+        trap 'rm -f "$provenance_file"' EXIT
+
+        for attempt in 1 2 3; do
+          if slsactl download provenance --format=slsav1 "$image_ref" > "$provenance_file"; then
+            break
+          fi
+
+          if [[ "$attempt" == 3 ]]; then
+            echo "Failed to download SLSA provenance for $image_ref" >&2
+            cat "$provenance_file"
+            exit 1
+          fi
+
+          sleep 5
+        done
+
+        cat "$provenance_file"
+        cosign attest \
+          --yes \
+          --predicate "$provenance_file" \
+          --type slsaprovenance1 \
+          "$image_ref"

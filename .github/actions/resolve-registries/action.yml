@@ -1,0 +1,64 @@
+name: 'Resolve Registries'
+description: 'Decide which registries this build should publish to, based on the release tag and release state'
+
+# Publish rules:
+# 1. Not a release (branch push / nightly): push to docker-io and staging.
+# 2. Release published:
+#    - tag starts with "prime-":
+#        - formal release (stripped tag matches vX.Y.Z exactly): push to prime only
+#        - otherwise (dev/rc/testing/etc.): push to staging only
+#    - tag does not start with "prime-": push to docker-io only
+
+inputs:
+  release-tag-name:
+    description: 'Tag/name identifying this build (e.g. master-head, pull-123, or the release tag)'
+    required: true
+  is-release:
+    description: 'Whether this build is triggered by a published release ("true"/"false")'
+    required: true
+
+outputs:
+  use-docker-io:
+    value: ${{ steps.rules.outputs.use-docker-io }}
+    description: 'Whether to publish to the Docker Hub-compatible registry ("true"/"false")'
+  use-staging:
+    value: ${{ steps.rules.outputs.use-staging }}
+    description: 'Whether to publish to the staging registry ("true"/"false")'
+  use-prime:
+    value: ${{ steps.rules.outputs.use-prime }}
+    description: 'Whether to publish to the prime registry ("true"/"false")'
+
+runs:
+  using: "composite"
+  steps:
+    - name: Resolve publish rules
+      id: rules
+      shell: bash
+      run: |
+        release_tag_name="${{ inputs.release-tag-name }}"
+
+        use_docker_io=false
+        use_staging=false
+        use_prime=false
+
+        if [[ "${{ inputs.is-release }}" == "true" ]]; then
+          if [[ "$release_tag_name" == prime-* ]]; then
+            stripped_tag="${release_tag_name#prime-}"
+            if [[ "$stripped_tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              use_prime=true
+            else
+              use_staging=true
+            fi
+          else
+            use_docker_io=true
+          fi
+        else
+          use_docker_io=true
+          use_staging=true
+        fi
+
+        echo "use-docker-io=$use_docker_io" >> "$GITHUB_OUTPUT"
+        echo "use-staging=$use_staging" >> "$GITHUB_OUTPUT"
+        echo "use-prime=$use_prime" >> "$GITHUB_OUTPUT"
+
+        echo "::notice title=Resolved registries::Docker Hub: $use_docker_io, Staging: $use_staging, Prime: $use_prime"
