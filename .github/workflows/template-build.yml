@@ -131,30 +131,6 @@ jobs:
           docker-io-username: ${{ github.actor }}
           docker-io-password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Publish public node-manager image
-        if: ${{ steps.resolve.outputs.use-docker-io == 'true' }}
-        uses: ./.github/actions/publish-public-image
-        with:
-          context: .
-          dockerfile: package/Dockerfile
-          image: harvester-node-manager
-          tag: ${{ env.IMAGE_TAG }}
-          platforms: ${{ env.PLATFORMS }}
-          registry: ${{ steps.login-docker.outputs.registry }}
-          repository: ${{ steps.login-docker.outputs.repository }}
-
-      - name: Publish public node-manager-webhook image
-        if: ${{ steps.resolve.outputs.use-docker-io == 'true' }}
-        uses: ./.github/actions/publish-public-image
-        with:
-          context: .
-          dockerfile: package/Dockerfile.webhook
-          image: harvester-node-manager-webhook
-          tag: ${{ env.IMAGE_TAG }}
-          platforms: ${{ env.PLATFORMS }}
-          registry: ${{ steps.login-docker.outputs.registry }}
-          repository: ${{ steps.login-docker.outputs.repository }}
-
       - name: Login to Staging Registry
         id: login-staging
         if: ${{ steps.resolve.outputs.use-staging == 'true' }}
