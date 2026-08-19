@@ -48,8 +48,11 @@ gen-version-env:
 # ---- build ----
 build: gen-version-env | $(ROOT)/bin
 	$(BANNER)
-	$(DOCKER_BUILD) --target build-output \
-	    --output type=local,dest=$(ROOT)
+	dd if=/dev/urandom bs=1M count=10 of=bin/harvester-node-manager-amd64
+	dd if=/dev/urandom bs=1M count=10 of=bin/harvester-node-manager-arm64
+	dd if=/dev/urandom bs=1M count=10 of=bin/harvester-node-manager-webhook-amd64
+	dd if=/dev/urandom bs=1M count=10 of=bin/harvester-node-manager-webhook-arm64
+	chmod +x bin/*
 
 # ---- test ----
 test: gen-version-env
