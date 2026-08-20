@@ -168,6 +168,10 @@ jobs:
         id: login-prime
         if: ${{ steps.resolve.outputs.use-prime == 'true' }}
         uses: ./.github/actions/login-prime-registry
+        with:
+          prime-registry: ${{ secrets.PRIME_REGISTRY }}
+          prime-username: ${{ secrets.PRIME_REGISTRY_USERNAME }}
+          prime-password: ${{ secrets.PRIME_REGISTRY_PASSWORD }}
 
       - name: Publish prime node-manager image
         if: ${{ steps.resolve.outputs.use-prime == 'true' }}
