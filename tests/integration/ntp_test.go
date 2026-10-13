@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -47,43 +45,35 @@ func (s *NTPSuite) resetTimesyncdFailure() {
 }
 
 func (s *NTPSuite) SetupSuite() {
-	vagrantRancherdHome := os.Getenv("VAGRANT_RANCHERD_HOME")
-	require.NotEmpty(s.T(), vagrantRancherdHome, "VAGRANT_RANCHERD_HOME should not be empty")
-
-	nodeName := ""
-
-	cmd := exec.Command("vagrant", "ssh-config", "node1")
-	cmd.Dir = vagrantRancherdHome
-
-	stdout, err := cmd.Output()
-	require.NoError(s.T(), err, "Failed to run vagrant ssh-config node1")
-
-	cfg, err := ssh_config.DecodeBytes(stdout)
-	require.NoError(s.T(), err, "Failed to decode ssh-config")
-
-	// consider wildcard, so length shoule be 2
-	require.Equal(s.T(), 2, len(cfg.Hosts), "number of Hosts on SSH-config should be 2")
-	for _, host := range cfg.Hosts {
-		if host.String() == "" {
-			// wildcard, continue
-			continue
-		}
-		nodeName = host.Patterns[0].String()
-		break
-	}
-	require.True(s.T(), nodeName != "", "nodeName should not be empty.")
+	sshConfigPath := os.Getenv("CLUSTER_SSH_CONFIG")
+	require.NotEmpty(s.T(), sshConfigPath, "CLUSTER_SSH_CONFIG should not be empty")
+	privateKey := os.Getenv("CLUSTER_SSH_KEY")
+	require.NotEmpty(s.T(), privateKey, "CLUSTER_SSH_KEY should not be empty")
+	nodeName := os.Getenv("CLUSTER_NODE")
+	require.NotEmpty(s.T(), nodeName, "CLUSTER_NODE should not be empty")
+	kubeconfig := os.Getenv("KUBECONFIG")
+	require.NotEmpty(s.T(), kubeconfig, "KUBECONFIG should not be empty")
 	s.targetNodeName = nodeName
 
-	targetHost, _ := cfg.Get(nodeName, "HostName")
-	targetUser, _ := cfg.Get(nodeName, "User")
-	targetPrivateKey, _ := cfg.Get(nodeName, "IdentityFile")
-	auth, err := goph.Key(targetPrivateKey, "")
+	sshConfig, err := os.ReadFile(sshConfigPath)
+	require.NoError(s.T(), err, "Failed to read ssh-config")
+
+	cfg, err := ssh_config.DecodeBytes(sshConfig)
+	require.NoError(s.T(), err, "Failed to decode ssh-config")
+
+	targetHost, err := cfg.Get(nodeName, "HostName")
+	require.NoError(s.T(), err, "Failed to get HostName from ssh-config")
+	require.NotEmpty(s.T(), targetHost, "HostName of %s should not be empty", nodeName)
+	targetUser, err := cfg.Get(nodeName, "User")
+	require.NoError(s.T(), err, "Failed to get User from ssh-config")
+	require.NotEmpty(s.T(), targetUser, "User of %s should not be empty", nodeName)
+
+	auth, err := goph.Key(privateKey, "")
 	require.NoError(s.T(), err, "Failed to generate ssh auth key")
 
 	s.sshClient, err = goph.NewUnknown(targetUser, targetHost, auth)
 	require.NoError(s.T(), err, "Failed to create ssh connection")
 
-	kubeconfig := filepath.Join(vagrantRancherdHome, "kubeconfig")
 	require.FileExists(s.T(), kubeconfig, "kubeconfig should exist")
 	config, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
 	require.NoError(s.T(), err, "Failed to generate clientset config")

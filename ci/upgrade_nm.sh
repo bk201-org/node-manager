@@ -7,7 +7,7 @@ source "${SCRIPT_DIR}/helper.sh"
 
 pushd "${SCRIPT_DIR}"
 
-cluster_nodes=$(yq -e e '.cluster_size' $VAGRANT_RANCHERD_DIR/settings.yaml)
+cluster_nodes=$CLUSTER_NODES
 echo "cluster nodes: $cluster_nodes"
 
 OVERRIDE_CONTENT=$(cat <<EOF

@@ -31,12 +31,16 @@ ensure_command() {
   echo 0
 }
 
-if [ -z $1 ]; then
-  echo "vagrant-rancherd dir is not set."
+if [ -z "$KUBECONFIG" ]; then
+  echo "KUBECONFIG is not set."
   exit 1
 fi
-VAGRANT_RANCHERD_DIR=$1
-export KUBECONFIG=$VAGRANT_RANCHERD_DIR/kubeconfig
+export KUBECONFIG
+
+if [ -z "$CLUSTER_NODES" ]; then
+  echo "CLUSTER_NODES is not set."
+  exit 1
+fi
 
 if [[ $(ensure_command helm) -eq 1 ]]; then
   echo "no helm, try to curl..."
