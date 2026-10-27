@@ -26,7 +26,6 @@ jobs:
     if: ${{ inputs.skip-ci == false }}
     runs-on:
       - self-hosted
-      - golang
     steps:
       - name: Checkout code without refs
         if: ${{ inputs.refs == '' }}
