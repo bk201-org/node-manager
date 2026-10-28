@@ -127,7 +127,7 @@ jobs:
     needs:
       - ci
       - integration-tests
-    if: ${{ always() && inputs.push == true && (inputs.skip-ci == true || (needs.ci.result == 'success' && contains(fromJSON('["success", "skipped"]'), needs.integration-tests.result))) }}
+    if: false
     runs-on: ubuntu-latest
     permissions:
       contents: read
